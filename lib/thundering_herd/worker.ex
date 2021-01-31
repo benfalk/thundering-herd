@@ -1,14 +1,15 @@
 defmodule ThunderingHerd.Worker do
   use GenServer
   alias ThunderingHerd, as: TH
-  import TH.Batch, only: [empty?: 1]
+  import TH.Queue, only: [empty?: 1]
+  @default_batch_capacity 30
 
   defstruct working: false,
-            batch: TH.Batch.new(),
+            queue: TH.Queue.new(),
             func: nil
 
-  def start_link(batching_work_fun \\ &TH.Worker.simple_echo/1) do
-    GenServer.start_link(TH.Worker, batching_work_fun)
+  def start_link(batching_work_fun \\ &TH.Worker.simple_echo/1, opts \\ []) do
+    GenServer.start_link(TH.Worker, [func: batching_work_fun] ++ opts)
   end
 
   def process(server_pid, item) do
@@ -21,13 +22,17 @@ defmodule ThunderingHerd.Worker do
 
   ## GenServer Callbacks
 
-  def init(batching_work_fun) do
-    {:ok, %TH.Worker{func: batching_work_fun}}
+  def init(args) do
+    {:ok,
+     %TH.Worker{
+       func: Keyword.fetch!(args, :func),
+       queue: TH.Queue.new(Keyword.get(args, :batch_capacity, @default_batch_capacity))
+     }}
   end
 
   def handle_call({:process_item, item}, ref, %{working: true} = state) do
-    {:ok, updated_batch} = TH.Batch.add_data(state.batch, ref, item)
-    {:noreply, %{state | batch: updated_batch}}
+    {:ok, updated_queue} = TH.Queue.add(state.queue, ref, item)
+    {:noreply, %{state | queue: updated_queue}}
   end
 
   def handle_call({:process_item, item}, ref, %{func: func} = state) do
@@ -35,13 +40,14 @@ defmodule ThunderingHerd.Worker do
     {:noreply, %{state | working: true}}
   end
 
-  def handle_cast(:batch_processed, %{batch: batch} = state) when empty?(batch) do
+  def handle_cast(:batch_processed, %{queue: queue} = state) when empty?(queue) do
     {:noreply, %{state | working: false}}
   end
 
-  def handle_cast(:batch_processed, %{batch: batch, func: func} = state) do
+  def handle_cast(:batch_processed, %{queue: queue, func: func} = state) do
+    {:ok, batch, updated_queue} = TH.Queue.next_batch(queue)
     process_batch(batch, func)
-    {:noreply, %{state | batch: TH.Batch.new()}}
+    {:noreply, %{state | queue: updated_queue}}
   end
 
   ## Private Functions

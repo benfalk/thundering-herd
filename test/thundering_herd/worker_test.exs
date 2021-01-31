@@ -1,5 +1,5 @@
 defmodule ThunderingHerd.WorkerTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
   alias ThunderingHerd, as: TH
   doctest TH.Worker
 
@@ -40,5 +40,28 @@ defmodule ThunderingHerd.WorkerTest do
     # size to 3, so the value should be 3 back since it multiplies
     # the value given by the number of items from the batch
     assert 3 == TH.Worker.process(pid, 1)
+  end
+
+  test "you can set a maximum batch size" do
+    processor = fn items ->
+      Process.sleep(5)
+      Map.new(items, &{&1, items})
+    end
+
+    {:ok, pid} = TH.Worker.start_link(processor, batch_capacity: 2)
+
+    # This one should pass through by itself
+    spawn(fn -> TH.Worker.process(pid, 1) end)
+
+    # These five should pile up in separate batches
+    Enum.each(2..6, &spawn(fn -> TH.Worker.process(pid, &1) end))
+
+    # Sleeping a little so all of the spawns have made it through
+    Process.sleep(1)
+    items = TH.Worker.process(pid, 1)
+
+    assert length(items) == 2
+    assert 1 in items
+    assert 6 in items
   end
 end

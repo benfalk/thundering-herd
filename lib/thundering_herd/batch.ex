@@ -20,13 +20,11 @@ defmodule ThunderingHerd.Batch do
   end
 
   def process(data, func) do
-    func.(data_to_process(data))
+    func.(items(data))
     |> Enum.flat_map(fn {key, val} ->
       Enum.map(data[key], &{&1, val})
     end)
   end
 
-  ## Private Functions
-
-  defp data_to_process(data), do: Map.keys(data)
+  def items(data), do: Map.keys(data)
 end
