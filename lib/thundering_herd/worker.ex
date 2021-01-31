@@ -1,6 +1,7 @@
 defmodule ThunderingHerd.Worker do
   use GenServer
   alias ThunderingHerd, as: TH
+  import TH.Batch, only: [empty?: 1]
 
   defstruct working: false,
             batch: TH.Batch.new(),
@@ -25,7 +26,7 @@ defmodule ThunderingHerd.Worker do
   end
 
   def handle_call({:process_item, item}, ref, %{working: true} = state) do
-    updated_batch = TH.Batch.add_data(state.batch, ref, item)
+    {:ok, updated_batch} = TH.Batch.add_data(state.batch, ref, item)
     {:noreply, %{state | batch: updated_batch}}
   end
 
@@ -34,17 +35,28 @@ defmodule ThunderingHerd.Worker do
     {:noreply, %{state | working: true}}
   end
 
+  def handle_cast(:batch_processed, %{batch: batch} = state) when empty?(batch) do
+    {:noreply, %{state | working: false}}
+  end
+
+  def handle_cast(:batch_processed, %{batch: batch, func: func} = state) do
+    process_batch(batch, func)
+    {:noreply, %{state | batch: TH.Batch.new()}}
+  end
+
   ## Private Functions
 
-  def process_batch(batch, func) do
+  defp process_batch(batch, func) do
     worker = self()
 
-    Task.async(fn ->
-      batch
-      |> TH.Batch.process(func)
-      |> Enum.each(fn {ref, val} -> GenServer.reply(ref, val) end)
-
-      GenServer.cast(worker, :batch_processed)
+    spawn(fn ->
+      try do
+        batch
+        |> TH.Batch.process(func)
+        |> Enum.each(fn {ref, val} -> GenServer.reply(ref, val) end)
+      after
+        GenServer.cast(worker, :batch_processed)
+      end
     end)
   end
 end

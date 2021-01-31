@@ -1,7 +1,13 @@
 defmodule ThunderingHerd.Batch do
-  defmacro batch_size(batch) do
+  defmacro size(batch) do
     quote do
-      map_size(elem(unquote(batch), 0))
+      map_size(unquote(batch))
+    end
+  end
+
+  defmacro empty?(batch) do
+    quote do
+      map_size(unquote(batch)) == 0
     end
   end
 
@@ -10,7 +16,7 @@ defmodule ThunderingHerd.Batch do
   def new(ref, item), do: %{item => [ref]}
 
   def add_data(data, ref, item) do
-    {:ok, ref, Map.update(data, item, [ref], &[ref | &1])}
+    {:ok, Map.update(data, item, [ref], &[ref | &1])}
   end
 
   def process(data, func) do
