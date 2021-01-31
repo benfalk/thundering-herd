@@ -64,4 +64,27 @@ defmodule ThunderingHerd.WorkerTest do
     assert 1 in items
     assert 6 in items
   end
+
+  test "you can specify a maximum concurrency" do
+    processor = fn items ->
+      Process.sleep(5)
+      Map.new(items, &{&1, items})
+    end
+
+    {:ok, pid} = TH.Worker.start_link(processor, max_concurrency: 3)
+    test = self()
+
+    Enum.each(
+      1..7,
+      &spawn(fn ->
+        send(test, {&1, TH.Worker.process(pid, &1)})
+      end)
+    )
+
+    assert_receive {1, [1]}
+    assert_receive {2, [2]}
+    assert_receive {3, [3]}
+
+    assert_receive {4, [4, 5, 6, 7]}
+  end
 end
