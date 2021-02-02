@@ -5,33 +5,6 @@ defmodule ThunderingHerd.Queue do
 
   defguard empty?(queue) when elem(queue, 0) == 0 and map_size(elem(queue, 3)) == 0
 
-  defmacro enqueued_batches(queue) do
-    quote bind_quoted: [queue: queue] do
-      elem(queue, 0)
-    end
-  end
-
-  defmacro batch_capacity(queue) do
-    quote bind_quoted: [queue: queue] do
-      elem(queue, 1)
-    end
-  end
-
-  defmacro current_batch(queue) do
-    quote bind_quoted: [queue: queue] do
-      elem(queue, 3)
-    end
-  end
-
-  defmacro total_enqueued(queue) do
-    quote bind_quoted: [queue: queue] do
-      require TH.Batch
-
-      TH.Queue.enqueued_batches(queue) * TH.Queue.batch_capacity(queue) +
-        TH.Batch.size(TH.Queue.current_batch(queue))
-    end
-  end
-
   def new(batch_capacity \\ @default_batch_capacity) do
     {0, batch_capacity, :queue.new(), TH.Batch.new()}
   end
@@ -46,6 +19,12 @@ defmodule ThunderingHerd.Queue do
        {enqueued, max_batch, queue, batch}
      end}
   end
+
+  def total_enqueued({enqueued, max_batch, _, batch}) do
+    enqueued * max_batch + TH.Batch.size(batch)
+  end
+
+  def enqueued_batches({amount, _, _, _}), do: amount
 
   def next_batch({0, max_batch, queue, batch}) do
     {:ok, batch, {0, max_batch, queue, TH.Batch.new()}}
