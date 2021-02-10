@@ -10,14 +10,17 @@ defmodule ThunderingHerd.Worker do
             func: nil,
             max: @default_concurrency
 
+  @spec start_link(TH.Batch.process_fun(), Keyword.t()) :: {:ok, pid()} | {:error, any()}
   def start_link(batching_work_fun \\ &TH.Worker.simple_echo/1, opts \\ []) do
     GenServer.start_link(TH.Worker, [func: batching_work_fun] ++ opts)
   end
 
+  @spec process(GenServer.server(), any()) :: any()
   def process(server_pid, item) do
     GenServer.call(server_pid, {:process_item, item})
   end
 
+  @spec simple_echo([any()]) :: %{any() => any()}
   def simple_echo(items) do
     Map.new(items, &{&1, &1})
   end
@@ -56,9 +59,12 @@ defmodule ThunderingHerd.Worker do
 
   ## Private Functions
 
+  @spec process_batch(TH.Batch.t(), TH.Batch.process_fun()) :: pid()
   defp process_batch(batch, func) do
     worker = self()
 
+    # TODO: Need to message back to the orginal callers if something
+    #       bad happens instead of letting them time out
     spawn(fn ->
       try do
         batch
